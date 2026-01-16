@@ -28,6 +28,8 @@ source /usr/local/powerctl/conf/schedule.conf
 # Safe defaults for optional settings
 POWER_STABLE_TIME_LOW="${POWER_STABLE_TIME_LOW:-120}"
 POWER_STABLE_TIME_HIGH="${POWER_STABLE_TIME_HIGH:-60}"
+ONLINE_STABLE_MIN="${ONLINE_STABLE_MIN:-30}"
+ONBATT_STABLE_MIN="${ONBATT_STABLE_MIN:-10}"
 
 # --- Lock -----------------------------------------------------
 LOCK_FILE="/run/powerctl/power-supervisor.lock"
@@ -58,6 +60,41 @@ get_state_ts() {
     else
         echo ""
     fi
+}
+
+# Reconcile conflicting power state markers and return effective state
+# This prevents flapping from leaving both on_battery_since and power_restored_at set.
+resolve_power_state() {
+    local onbatt_ts online_ts
+
+    onbatt_ts="$(get_state_ts "on_battery_since")"
+    online_ts="$(get_state_ts "power_restored_at")"
+
+    if [[ -n "$onbatt_ts" && -n "$online_ts" ]]; then
+        if (( onbatt_ts > online_ts )); then
+            log_warn "State conflict detected; keeping on_battery and clearing power_restored_at"
+            state_unset "power_restored_at"
+            echo "on_battery"
+            return
+        fi
+
+        log_warn "State conflict detected; keeping online and clearing on_battery_since"
+        state_unset "on_battery_since"
+        echo "online"
+        return
+    fi
+
+    if [[ -n "$onbatt_ts" ]]; then
+        echo "on_battery"
+        return
+    fi
+
+    if [[ -n "$online_ts" ]]; then
+        echo "online"
+        return
+    fi
+
+    echo ""
 }
 
 # Ensure timestamp exists in state, otherwise set to now
@@ -104,14 +141,14 @@ get_stable_time() {
     fi
 }
 
-# Count reachable devices
+# Count active devices (ping + ports if configured)
 count_active_devices() {
     local count=0
     local entry
 
     for entry in "${DEVICES[@]}"; do
         device_parse "$entry"
-        if device_is_reachable "$DEVICE_HOST"; then
+        if device_is_active "$DEVICE_HOST" "$DEVICE_PORTS"; then
             ((count++))
         fi
     done
@@ -119,15 +156,15 @@ count_active_devices() {
     echo "$count"
 }
 
-# Collect active critical devices (name|host)
+# Collect active critical devices (name|host|ports)
 collect_active_critical_devices() {
     ACTIVE_DEVICES=()
     local entry
 
     for entry in "${DEVICES[@]}"; do
         device_parse "$entry"
-        if [[ "$DEVICE_ROLE" == "critical" ]] && device_is_reachable "$DEVICE_HOST"; then
-            ACTIVE_DEVICES+=("${DEVICE_NAME}|${DEVICE_HOST}")
+        if [[ "$DEVICE_ROLE" == "critical" ]] && device_is_active "$DEVICE_HOST" "$DEVICE_PORTS"; then
+            ACTIVE_DEVICES+=("${DEVICE_NAME}|${DEVICE_HOST}|${DEVICE_PORTS}")
         fi
     done
 }
@@ -135,16 +172,16 @@ collect_active_critical_devices() {
 # Send graceful shutdown; build PENDING_DEVICES list
 send_graceful_shutdown() {
     PENDING_DEVICES=()
-    local device_info name host old_ifs
+    local device_info name host ports old_ifs
 
     for device_info in "${ACTIVE_DEVICES[@]}"; do
         old_ifs="$IFS"
-        IFS='|' read -r name host <<< "$device_info"
+        IFS='|' read -r name host ports <<< "$device_info"
         IFS="$old_ifs"
 
         log_info "Sending graceful shutdown to ${name} (${host})"
         if device_shutdown_graceful "$name" "$host"; then
-            PENDING_DEVICES+=("${name}|${host}")
+            PENDING_DEVICES+=("${name}|${host}|${ports}")
         else
             log_warn "Graceful shutdown failed for ${name}; forcing immediately"
             device_shutdown_forced "$name" "$host"
@@ -157,7 +194,7 @@ wait_and_force_shutdown() {
     local timeout="$1"
     local start_ts elapsed
     local pending new_pending
-    local device_info name host old_ifs
+    local device_info name host ports old_ifs
 
     if (( ${#PENDING_DEVICES[@]} == 0 )); then
         return 0
@@ -171,11 +208,11 @@ wait_and_force_shutdown() {
 
         for device_info in "${pending[@]}"; do
             old_ifs="$IFS"
-            IFS='|' read -r name host <<< "$device_info"
+            IFS='|' read -r name host ports <<< "$device_info"
             IFS="$old_ifs"
 
-            if device_is_reachable "$host"; then
-                new_pending+=("${name}|${host}")
+            if device_is_active "$host" "$ports"; then
+                new_pending+=("${name}|${host}|${ports}")
             else
                 log_info "Device ${name} is now down"
             fi
@@ -197,7 +234,7 @@ wait_and_force_shutdown() {
 
     for device_info in "${pending[@]}"; do
         old_ifs="$IFS"
-        IFS='|' read -r name host <<< "$device_info"
+        IFS='|' read -r name host ports <<< "$device_info"
         IFS="$old_ifs"
 
         log_warn "Forcing shutdown for ${name} after timeout"
@@ -269,11 +306,16 @@ handle_on_battery() {
         return
     fi
 
-    # Clear any stale online marker
-    state_unset "power_restored_at"
-
     since="$(ensure_state_ts "on_battery_since")"
     elapsed=$(( $(state_timestamp) - since ))
+
+    if (( elapsed < ONBATT_STABLE_MIN )); then
+        log_debug "On battery for ${elapsed}s (debounce: ${ONBATT_STABLE_MIN}s)"
+        return
+    fi
+
+    # Clear any stale online marker after debounce
+    state_unset "power_restored_at"
 
     if is_night_time; then
         active_count="$(count_active_devices)"
@@ -297,17 +339,22 @@ handle_power_restored() {
         return
     fi
 
-    # Clear any stale on_battery marker
-    state_unset "on_battery_since"
-    state_unset "battery_status"
-
     restored="$(get_state_ts "power_restored_at")"
     if [[ -z "$restored" ]]; then
         return
     fi
 
-    stable_time="$(get_stable_time)"
     stable=$(( $(state_timestamp) - restored ))
+    if (( stable < ONLINE_STABLE_MIN )); then
+        log_debug "Power restored ${stable}s ago (debounce: ${ONLINE_STABLE_MIN}s)"
+        return
+    fi
+
+    # Clear any stale on_battery marker after debounce
+    state_unset "on_battery_since"
+    state_unset "battery_status"
+
+    stable_time="$(get_stable_time)"
     if (( stable < stable_time )); then
         log_debug "Power restored ${stable}s ago; waiting ${stable_time}s"
         return
@@ -334,7 +381,7 @@ handle_power_restored() {
             continue
         fi
 
-        if device_is_reachable "$DEVICE_HOST"; then
+        if device_is_active "$DEVICE_HOST" "$DEVICE_PORTS"; then
             log_info "Device ${DEVICE_NAME} already up; skipping WOL"
             continue
         fi
@@ -349,6 +396,10 @@ handle_power_restored() {
 # --- Main loop -----------------------------------------------
 while true; do
     power_status="$(state_get power_status || echo unknown)"
+    resolved_status="$(resolve_power_state)"
+    if [[ -n "$resolved_status" ]]; then
+        power_status="$resolved_status"
+    fi
 
     # Highest priority: low battery
     handle_low_battery
