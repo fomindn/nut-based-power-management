@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
+#
 # common/lib/log.sh
-# Unified logging helpers for power orchestration stack
+#
+# Unified logging library.
+# All logs go to journald.
+#
 
 set -euo pipefail
+IFS=$'\n\t'
 
-# Default values (can be overridden by env)
-: "${POWERCTL_LOG_TAG:=powerctl}"
-: "${POWERCTL_LOG_STDERR:=0}"
+LOGGER_TAG="${LOGGER_TAG:-powerctl}"
 
 _log() {
     local level="$1"
     shift
-    local msg="$*"
-
-    logger -t "$POWERCTL_LOG_TAG" "[$level] $msg"
-
-    if [[ "$POWERCTL_LOG_STDERR" -eq 1 ]]; then
-        >&2 echo "[$level] $msg"
-    fi
+    logger -t "$LOGGER_TAG" -p "user.${level}" -- "$*"
 }
 
-log_debug() { _log DEBUG "$@"; }
-log_info()  { _log INFO  "$@"; }
-log_warn()  { _log WARN  "$@"; }
-log_error() { _log ERROR "$@"; }
-log_fatal() { _log FATAL "$@"; exit 1; }
+log_debug() { _log debug "$*"; }
+log_info()  { _log info  "$*"; }
+log_warn()  { _log warn  "$*"; }
+log_error() { _log err   "$*"; }
