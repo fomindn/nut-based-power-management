@@ -4,7 +4,7 @@
 # Called by NUT upssched or NOTIFYCMD
 #
 # This script MUST be extremely simple and fast.
-# It only writes power state markers.
+# It only writes power state markers for standard NUT events.
 #
 
 set -euo pipefail
@@ -15,6 +15,8 @@ source /usr/local/powerctl/common/lib/log.sh
 
 EVENT="${1:-}"
 
+# Only standard NUT event names are accepted:
+# onbatt, online, lowbatt (lowercase from upssched)
 case "$EVENT" in
     onbatt)
         log_warn "UPS event: ON BATTERY"
