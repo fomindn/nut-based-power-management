@@ -1,42 +1,26 @@
 #!/usr/bin/env bash
 #
 # wol-lib.sh
-#
-# Wake-on-LAN utilities.
+# Wake-on-LAN helper
 #
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# ------------------------------------------------------------
-# Dependencies check
-# ------------------------------------------------------------
+source /usr/local/powerctl/common/lib/log.sh
 
-command -v wakeonlan >/dev/null || {
-    echo "wakeonlan utility is required"
-    exit 1
-}
-
-# ------------------------------------------------------------
-# Public API
-# ------------------------------------------------------------
+WOL_RETRIES=3
+WOL_INTERVAL=15
 
 wol_device() {
-    #
-    # Sends WOL magic packet
-    #
-    local name="$1"
-    local mac="$2"
-    local broadcast="${3:-255.255.255.255}"
+    local mac="$1"
 
-    if [[ ! "$mac" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
-        log_error "Invalid MAC address for ${name}: ${mac}"
-        return 1
-    fi
+    for ((i=1; i<=WOL_RETRIES; i++)); do
+        log_info "WOL attempt ${i} for ${mac}"
+        wakeonlan "$mac" && return 0
+        sleep "$WOL_INTERVAL"
+    done
 
-    log_info "Sending WOL packet to ${name} (${mac})"
-
-    wakeonlan -i "$broadcast" "$mac" \
-        && log_info "WOL packet sent to ${name}" \
-        || log_error "WOL failed for ${name}"
+    log_error "WOL failed for ${mac}"
+    return 1
 }

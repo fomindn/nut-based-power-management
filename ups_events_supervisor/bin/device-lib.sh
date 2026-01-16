@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 #
 # device-lib.sh
-#
-# Network device abstraction layer.
+# Network device abstraction layer
 #
 
 set -euo pipefail
 IFS=$'\n\t'
 
+source /usr/local/powerctl/common/lib/log.sh
 source /usr/local/powerctl/bin/ssh-lib.sh
 source /usr/local/powerctl/bin/wol-lib.sh
+
+device_parse() {
+    IFS='|' read -r DEVICE_NAME DEVICE_HOST DEVICE_MAC DEVICE_ROLE DEVICE_AUTOSTART <<< "$1"
+}
 
 device_is_reachable() {
     local host="$1"
@@ -21,7 +25,7 @@ device_shutdown_graceful() {
     local host="$2"
 
     log_info "Requesting graceful shutdown for ${name}"
-    ssh_graceful_shutdown "$host" || return 1
+    ssh_graceful_shutdown "$host"
 }
 
 device_shutdown_forced() {
@@ -35,5 +39,7 @@ device_shutdown_forced() {
 device_wake() {
     local name="$1"
     local mac="$2"
-    wol_device "$name" "$mac"
+
+    log_info "Sending WOL packet to ${name}"
+    wol_device "$mac"
 }
