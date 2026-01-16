@@ -1,116 +1,185 @@
 #!/usr/bin/env bash
+#
 # ups_events_supervisor/install.sh
+#
+# Installs or removes UPS Power Supervisor service.
+#
+# Supported actions:
+#   --install (default)
+#   --delete
+#   --status
+#   --dry-run
+#
+# Design goals:
+# - Idempotent
+# - Journald-only logging
+# - Explicit MANIFEST for clean removal
+# - FHS-compliant paths
+# - systemd-native
+#
 
 set -euo pipefail
 IFS=$'\n\t'
 
+# ------------------------------------------------------------
+# Runtime parameters
+# ------------------------------------------------------------
+
 ACTION="${1:---install}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 INSTALL_ROOT="/usr/local/powerctl"
-CONF_ROOT="$INSTALL_ROOT/conf"
 BIN_ROOT="$INSTALL_ROOT/bin"
-SYSTEMD_UNIT="/etc/systemd/system/power-supervisor.service"
-ENV_DIR="/etc/powerctl"
-ENV_FILE="$ENV_DIR/powerctl.env"
-MANIFEST="$PROJECT_ROOT/MANIFEST"
-INSTALL_LOG="/var/log/powerctl-install.log"
+CONF_ROOT="$INSTALL_ROOT/conf"
 
-export POWERCTL_LOG_TAG="powerctl-install"
-export POWERCTL_LOG_STDERR=1
+STATE_ROOT="/run/powerctl"          # tmpfs runtime state
+SYSTEMD_UNIT_NAME="power-supervisor.service"
+SYSTEMD_UNIT_PATH="/etc/systemd/system/${SYSTEMD_UNIT_NAME}"
 
-source "$PROJECT_ROOT/../common/lib/log.sh"
+MANIFEST_PATH="${INSTALL_ROOT}/MANIFEST"
+
+DRY_RUN=false
+
+# ------------------------------------------------------------
+# Logging (journald)
+# ------------------------------------------------------------
+
+log() {
+    local level="$1"
+    shift
+    logger -t power-supervisor-install -p "user.${level}" -- "$*"
+}
+
+info()  { log info  "$*"; }
+warn()  { log warn  "$*"; }
+error() { log err   "$*"; }
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
 
 require_root() {
-    [[ $EUID -eq 0 ]] || log_fatal "This script must be run as root"
-}
-
-log_install() {
-    echo "$(date '+%F %T') $*" >> "$INSTALL_LOG"
-}
-
-install_files() {
-    log_info "Installing supervisor files"
-
-    install -d -m 0755 "$INSTALL_ROOT" "$BIN_ROOT" "$CONF_ROOT"
-    install -d -m 0755 "$ENV_DIR"
-
-    for f in "$PROJECT_ROOT/bin/"*.sh; do
-        install -m 0755 "$f" "$BIN_ROOT/"
-        log_install "INSTALL $(basename "$f") -> $BIN_ROOT"
-    done
-
-    for f in "$PROJECT_ROOT/conf/"*.conf; do
-        dest="$CONF_ROOT/$(basename "$f")"
-        if [[ -f "$dest" ]]; then
-            log_warn "Config $(basename "$f") exists, skipping"
-            log_install "SKIP existing config $dest"
-        else
-            install -m 0644 "$f" "$CONF_ROOT/"
-            log_install "INSTALL config $(basename "$f")"
-        fi
-    done
-
-    install -m 0644 "$PROJECT_ROOT/systemd/power-supervisor.service" "$SYSTEMD_UNIT"
-    log_install "INSTALL systemd unit $SYSTEMD_UNIT"
-}
-
-setup_env() {
-    if [[ ! -f "$ENV_FILE" ]]; then
-        cp "$PROJECT_ROOT/../common/env.example" "$ENV_FILE"
-        chmod 0644 "$ENV_FILE"
-        log_install "CREATE env file $ENV_FILE"
-        log_warn "Created $ENV_FILE from env.example — review before use"
-    else
-        log_info "Env file exists, skipping"
+    if [[ "$EUID" -ne 0 ]]; then
+        error "This installer must be run as root"
+        exit 1
     fi
 }
 
-enable_service() {
-    systemctl daemon-reload
-    systemctl enable power-supervisor.service
-    systemctl restart power-supervisor.service
-    log_install "ENABLE and START power-supervisor.service"
+run() {
+    if $DRY_RUN; then
+        info "[dry-run] $*"
+    else
+        "$@"
+    fi
 }
 
-uninstall() {
-    log_warn "Uninstalling power supervisor"
-
-    systemctl stop power-supervisor.service || true
-    systemctl disable power-supervisor.service || true
-
-    while read -r file; do
-        rm -f "$file"
-        log_install "REMOVE $file"
-    done < "$MANIFEST"
-
-    systemctl daemon-reload
-    log_install "UNINSTALL complete"
+record_manifest() {
+    echo "$1" >>"$MANIFEST_PATH"
 }
+
+# ------------------------------------------------------------
+# Install logic
+# ------------------------------------------------------------
+
+install_files() {
+    info "Installing supervisor files"
+
+    run mkdir -p "$BIN_ROOT" "$CONF_ROOT"
+    run cp -r "$PROJECT_ROOT/bin/." "$BIN_ROOT/"
+    run cp -r "$PROJECT_ROOT/conf/." "$CONF_ROOT/"
+
+    record_manifest "$INSTALL_ROOT"
+}
+
+install_runtime_state() {
+    info "Preparing runtime state directory"
+
+    run mkdir -p "$STATE_ROOT"
+    record_manifest "$STATE_ROOT"
+}
+
+install_systemd_unit() {
+    info "Installing systemd unit"
+
+    run cp "$PROJECT_ROOT/systemd/${SYSTEMD_UNIT_NAME}" "$SYSTEMD_UNIT_PATH"
+    record_manifest "$SYSTEMD_UNIT_PATH"
+
+    run systemctl daemon-reexec
+    run systemctl daemon-reload
+    run systemctl enable "$SYSTEMD_UNIT_NAME"
+}
+
+install_all() {
+    require_root
+
+    run mkdir -p "$INSTALL_ROOT"
+    run : >"$MANIFEST_PATH"
+
+    install_files
+    install_runtime_state
+    install_systemd_unit
+
+    info "UPS Power Supervisor installed successfully"
+}
+
+# ------------------------------------------------------------
+# Delete logic
+# ------------------------------------------------------------
+
+delete_all() {
+    require_root
+
+    if [[ ! -f "$MANIFEST_PATH" ]]; then
+        warn "MANIFEST not found, nothing to delete"
+        exit 0
+    fi
+
+    info "Stopping and disabling service"
+    run systemctl stop "$SYSTEMD_UNIT_NAME" || true
+    run systemctl disable "$SYSTEMD_UNIT_NAME" || true
+
+    info "Removing installed files"
+    tac "$MANIFEST_PATH" | while read -r path; do
+        run rm -rf "$path"
+    done
+
+    run systemctl daemon-reload
+    info "UPS Power Supervisor removed"
+}
+
+# ------------------------------------------------------------
+# Status
+# ------------------------------------------------------------
 
 status() {
-    systemctl status power-supervisor.service --no-pager || true
+    echo "Install root:  $INSTALL_ROOT"
+    echo "State dir:     $STATE_ROOT"
+    echo "Systemd unit:  $SYSTEMD_UNIT_PATH"
+    echo
+    systemctl status "$SYSTEMD_UNIT_NAME" --no-pager || true
 }
+
+# ------------------------------------------------------------
+# CLI
+# ------------------------------------------------------------
 
 case "$ACTION" in
     --install)
-        require_root
-        install_files
-        setup_env
-        enable_service
-        log_info "Installation complete"
+        install_all
         ;;
     --delete)
-        require_root
-        uninstall
+        delete_all
         ;;
     --status)
         status
         ;;
     --dry-run)
-        log_info "Dry-run mode not yet implemented"
+        DRY_RUN=true
+        install_all
         ;;
     *)
-        log_fatal "Unknown action: $ACTION"
+        echo "Usage: $0 [--install|--delete|--status|--dry-run]"
+        exit 1
         ;;
 esac
