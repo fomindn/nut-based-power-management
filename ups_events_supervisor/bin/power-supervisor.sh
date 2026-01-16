@@ -205,9 +205,12 @@ wait_and_force_shutdown() {
     done
 }
 
-# Mark shutdown started to avoid duplicates
+# Mark shutdown started to avoid duplicates and keep audit context
 mark_shutdown_started() {
-    state_set "shutdown_started" "$(state_timestamp)"
+    local ts
+    ts="$(state_timestamp)"
+    state_set "shutdown_started" "$ts"
+    state_set "shutdown_started_at" "$ts"
 }
 
 is_shutdown_started() {
@@ -236,8 +239,10 @@ shutdown_sequence() {
 
     log_warn "Shutdown sequence started: ${reason}"
     mark_shutdown_started
+    state_set "shutdown_reason" "$reason"
 
     collect_active_critical_devices
+    log_info "Active critical devices: ${#ACTIVE_DEVICES[@]}"
 
     if (( ${#ACTIVE_DEVICES[@]} > 0 )); then
         send_graceful_shutdown
