@@ -1,111 +1,76 @@
 #!/usr/bin/env bash
 #
 # power-supervisor.sh
-#
-# Main UPS power supervisor FSM.
+# Main UPS power supervisor daemon
 #
 
 set -euo pipefail
 IFS=$'\n\t'
 
-LOGGER_TAG="power-supervisor"
+LOCK_FILE="/run/powerctl/power-supervisor.lock"
+exec 9>"$LOCK_FILE" || exit 1
+flock -n 9 || exit 0
 
+# --- Imports --------------------------------------------------
 source /usr/local/powerctl/common/lib/log.sh
-source /usr/local/powerctl/bin/ups-lib.sh
+source /usr/local/powerctl/bin/state-lib.sh
 source /usr/local/powerctl/bin/device-lib.sh
 
-STATE_FILE="/run/powerctl/state"
-CHECK_INTERVAL=10
-
-# ------------------------------------------------------------
-# Configuration (loaded from conf/)
-# ------------------------------------------------------------
-
+# --- Configs --------------------------------------------------
 source /usr/local/powerctl/conf/power.conf
 source /usr/local/powerctl/conf/device.conf
 source /usr/local/powerctl/conf/schedule.conf
 
-set_state() {
-    echo "$1" >"$STATE_FILE"
-    log_info "FSM state changed to: $1"
-}
+log_info "Power Supervisor started"
 
-get_state() {
-    [[ -f "$STATE_FILE" ]] && cat "$STATE_FILE" || echo "INIT"
-}
+# --- Helpers --------------------------------------------------
+shutdown_devices_if_needed() {
+    for entry in "${DEVICES[@]}"; do
+        device_parse "$entry"
 
-# ------------------------------------------------------------
-# FSM handlers
-# ------------------------------------------------------------
-
-handle_on_line() {
-    if ups_on_battery; then
-        log_warn "Power lost, switching to battery"
-        set_state "ON_BATTERY"
-    fi
-}
-
-handle_on_battery() {
-    if ups_on_line; then
-        log_info "Power restored"
-        set_state "WAIT_RESTORE"
-        return
-    fi
-
-    if ups_low_battery; then
-        log_error "Low battery, forcing shutdown"
-        set_state "SHUTTING_DOWN"
-        return
-    fi
-
-    log_info "On battery, waiting before shutdown"
-    sleep "$BATTERY_GRACE_PERIOD"
-    set_state "SHUTTING_DOWN"
-}
-
-handle_shutting_down() {
-    for device in "${DEVICES[@]}"; do
-        device_shutdown_graceful "${device[name]}" "${device[host]}"
-    done
-
-    sleep "$FORCE_TIMEOUT"
-
-    for device in "${DEVICES[@]}"; do
-        device_shutdown_forced "${device[name]}" "${device[host]}"
-    done
-
-    log_warn "All devices shutdown sequence completed"
-}
-
-handle_wait_restore() {
-    sleep "$POWER_STABLE_TIME"
-
-    if ups_on_line && [[ "$(ups_battery_charge)" -ge "$MIN_START_BATTERY" ]]; then
-        log_info "Power stable, waking devices"
-        for device in "${DEVICES[@]}"; do
-            device_wake "${device[name]}" "${device[mac]}"
-        done
-        set_state "ON_LINE"
-    fi
-}
-
-# ------------------------------------------------------------
-# Main loop
-# ------------------------------------------------------------
-
-main() {
-    log_info "Power supervisor started"
-
-    while true; do
-        case "$(get_state)" in
-            INIT|ON_LINE)       handle_on_line ;;
-            ON_BATTERY)        handle_on_battery ;;
-            SHUTTING_DOWN)     handle_shutting_down ;;
-            WAIT_RESTORE)      handle_wait_restore ;;
-            *) log_error "Unknown FSM state" ;;
-        esac
-        sleep "$CHECK_INTERVAL"
+        if [[ "$DEVICE_ROLE" == "critical" ]] && device_is_reachable "$DEVICE_HOST"; then
+            device_shutdown_graceful "$DEVICE_NAME" "$DEVICE_HOST"
+        fi
     done
 }
 
-main
+wake_devices_if_allowed() {
+    for entry in "${DEVICES[@]}"; do
+        device_parse "$entry"
+
+        [[ "$DEVICE_AUTOSTART" != "yes" ]] && continue
+        device_wake "$DEVICE_NAME" "$DEVICE_MAC"
+    done
+}
+
+# --- Main loop -----------------------------------------------
+while true; do
+    power_status="$(state_get power_status || echo unknown)"
+
+    case "$power_status" in
+        on_battery)
+            since="$(state_get on_battery_since || echo 0)"
+            elapsed=$(( $(state_timestamp) - since ))
+
+            if (( elapsed > BATTERY_GRACE_PERIOD )); then
+                log_warn "Battery grace period exceeded (${elapsed}s)"
+                shutdown_devices_if_needed
+            fi
+            ;;
+        online)
+            restored="$(state_get power_restored_at || echo 0)"
+            stable=$(( $(state_timestamp) - restored ))
+
+            if (( stable > POWER_STABLE_TIME )); then
+                log_info "Power stable for ${stable}s, waking devices"
+                wake_devices_if_allowed
+                state_unset "power_restored_at"
+            fi
+            ;;
+        *)
+            log_debug "Power state unknown or not yet initialized"
+            ;;
+    esac
+
+    sleep "$CHECK_INTERVAL"
+done
