@@ -12,14 +12,15 @@ source /usr/local/powerctl/bin/ssh-lib.sh
 source /usr/local/powerctl/bin/wol-lib.sh
 
 # Parse a device entry from device.conf
-# Format: name|host|mac|role|auto_start|ports
+# Format: name|host|mac|role|auto_start|ports|auto_wake_max
 # ports: comma-separated TCP ports used to detect "active" services.
 # Use "-" or empty to treat ping as the only activity signal.
+# auto_wake_max: optional per-device limit for auto-wake attempts.
 device_parse() {
     local entry="$1"
     local old_ifs="$IFS"
 
-    IFS='|' read -r DEVICE_NAME DEVICE_HOST DEVICE_MAC DEVICE_ROLE DEVICE_AUTOSTART DEVICE_PORTS <<< "$entry"
+    IFS='|' read -r DEVICE_NAME DEVICE_HOST DEVICE_MAC DEVICE_ROLE DEVICE_AUTOSTART DEVICE_PORTS DEVICE_AUTO_WAKE_MAX <<< "$entry"
     IFS="$old_ifs"
 }
 

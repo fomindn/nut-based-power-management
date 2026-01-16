@@ -64,6 +64,22 @@ get_state_ts() {
     fi
 }
 
+# Sanitize a string to a safe state key suffix
+sanitize_key() {
+    local raw="$1"
+    echo "${raw//[^a-zA-Z0-9_]/_}"
+}
+
+# Build a per-device state key
+device_state_key() {
+    local device_name="$1"
+    local suffix="$2"
+    local safe_name
+
+    safe_name="$(sanitize_key "$device_name")"
+    echo "${suffix}_${safe_name}"
+}
+
 # Read an integer from state, return 0 if invalid
 get_state_int() {
     local key="$1"
@@ -77,16 +93,37 @@ get_state_int() {
     fi
 }
 
+# Determine per-device auto-wake limit
+get_device_auto_wake_limit() {
+    local device_limit="$1"
+
+    if [[ -n "$device_limit" ]] && [[ "$device_limit" =~ ^[0-9]+$ ]] && (( device_limit > 0 )); then
+        echo "$device_limit"
+    else
+        echo "$AUTO_WAKE_MAX_ATTEMPTS"
+    fi
+}
+
 # Initialize auto-wake session counters for a new ONLINE event
 init_auto_wake_session() {
     local restored_ts="$1"
     local current_session
+    local entry attempts_key exhausted_key
 
     current_session="$(state_get "auto_wake_for_restored_at" || true)"
     if [[ "$current_session" != "$restored_ts" ]]; then
         state_set "auto_wake_for_restored_at" "$restored_ts"
-        state_set "auto_wake_attempts" "0"
-        state_unset "auto_wake_exhausted"
+        for entry in "${DEVICES[@]}"; do
+            device_parse "$entry"
+            if [[ "$DEVICE_AUTOSTART" != "yes" ]]; then
+                continue
+            fi
+
+            attempts_key="$(device_state_key "$DEVICE_NAME" "auto_wake_attempts")"
+            exhausted_key="$(device_state_key "$DEVICE_NAME" "auto_wake_exhausted")"
+            state_set "$attempts_key" "0"
+            state_unset "$exhausted_key"
+        done
     fi
 }
 
@@ -374,8 +411,8 @@ handle_on_battery() {
 
 handle_power_restored() {
     local restored stable stable_time current_time charge entry
-    local attempts auto_wake_exhausted
-    local wol_attempted wol_success autostart_total autostart_active
+    local attempts attempts_key exhausted_key limit
+    local wol_attempted_any wol_success autostart_total autostart_active autostart_exhausted
 
     if is_shutdown_started; then
         return
@@ -416,22 +453,14 @@ handle_power_restored() {
     fi
 
     init_auto_wake_session "$restored"
-    attempts="$(get_state_int "auto_wake_attempts")"
-    auto_wake_exhausted="$(state_get "auto_wake_exhausted" || true)"
-    if (( attempts >= AUTO_WAKE_MAX_ATTEMPTS )); then
-        if [[ -z "$auto_wake_exhausted" ]]; then
-            log_warn "Auto-wake attempts exhausted (${attempts}/${AUTO_WAKE_MAX_ATTEMPTS}); stopping further attempts"
-            state_set "auto_wake_exhausted" "1"
-        fi
-        return
-    fi
 
     log_info "Auto-wake conditions met: time=${current_time}, charge=${charge}%, stable=${stable}s"
 
-    wol_attempted=0
+    wol_attempted_any=0
     wol_success=0
     autostart_total=0
     autostart_active=0
+    autostart_exhausted=0
 
     for entry in "${DEVICES[@]}"; do
         device_parse "$entry"
@@ -447,7 +476,24 @@ handle_power_restored() {
             continue
         fi
 
-        wol_attempted=1
+        attempts_key="$(device_state_key "$DEVICE_NAME" "auto_wake_attempts")"
+        exhausted_key="$(device_state_key "$DEVICE_NAME" "auto_wake_exhausted")"
+        limit="$(get_device_auto_wake_limit "$DEVICE_AUTO_WAKE_MAX")"
+        attempts="$(get_state_int "$attempts_key")"
+
+        if (( attempts >= limit )); then
+            if [[ -z "$(state_get "$exhausted_key" || true)" ]]; then
+                log_warn "Auto-wake exhausted for ${DEVICE_NAME} (${attempts}/${limit}); skipping"
+                state_set "$exhausted_key" "1"
+            fi
+            ((autostart_exhausted++))
+            continue
+        fi
+
+        wol_attempted_any=1
+        attempts=$(( attempts + 1 ))
+        state_set "$attempts_key" "$attempts"
+
         if device_wake "$DEVICE_NAME" "$DEVICE_MAC"; then
             wol_success=1
         fi
@@ -459,20 +505,25 @@ handle_power_restored() {
         return
     fi
 
-    if (( wol_attempted == 0 )); then
+    if (( autostart_active == autostart_total )); then
         log_info "All auto-start devices already active; clearing restoration marker"
         state_unset "power_restored_at"
         return
     fi
 
-    if (( wol_attempted == 1 )); then
-        attempts=$(( attempts + 1 ))
-        state_set "auto_wake_attempts" "$attempts"
+    if (( (autostart_active + autostart_exhausted) == autostart_total )); then
+        log_warn "Auto-wake exhausted for remaining devices; clearing restoration marker"
+        state_unset "power_restored_at"
+        return
+    fi
+
+    if (( wol_attempted_any == 0 )); then
+        log_info "No auto-wake attempts executed; keeping restoration marker"
+        return
     fi
 
     if (( wol_success == 1 )); then
-        log_info "Auto-wake succeeded; clearing restoration marker"
-        state_unset "power_restored_at"
+        log_info "Auto-wake command succeeded; waiting for devices to become active"
     fi
 }
 
