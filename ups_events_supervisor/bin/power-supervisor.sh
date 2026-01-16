@@ -30,6 +30,8 @@ POWER_STABLE_TIME_LOW="${POWER_STABLE_TIME_LOW:-120}"
 POWER_STABLE_TIME_HIGH="${POWER_STABLE_TIME_HIGH:-60}"
 ONLINE_STABLE_MIN="${ONLINE_STABLE_MIN:-30}"
 ONBATT_STABLE_MIN="${ONBATT_STABLE_MIN:-10}"
+AUTO_WAKE_MAX_ATTEMPTS="${AUTO_WAKE_MAX_ATTEMPTS:-3}"
+SHUTDOWN_COOLDOWN="${SHUTDOWN_COOLDOWN:-30}"
 
 # --- Lock -----------------------------------------------------
 LOCK_FILE="/run/powerctl/power-supervisor.lock"
@@ -59,6 +61,32 @@ get_state_ts() {
         echo "$ts"
     else
         echo ""
+    fi
+}
+
+# Read an integer from state, return 0 if invalid
+get_state_int() {
+    local key="$1"
+    local value
+
+    value="$(state_get "$key" || true)"
+    if [[ -n "$value" ]] && [[ "$value" =~ ^[0-9]+$ ]]; then
+        echo "$value"
+    else
+        echo "0"
+    fi
+}
+
+# Initialize auto-wake session counters for a new ONLINE event
+init_auto_wake_session() {
+    local restored_ts="$1"
+    local current_session
+
+    current_session="$(state_get "auto_wake_for_restored_at" || true)"
+    if [[ "$current_session" != "$restored_ts" ]]; then
+        state_set "auto_wake_for_restored_at" "$restored_ts"
+        state_set "auto_wake_attempts" "0"
+        state_unset "auto_wake_exhausted"
     fi
 }
 
@@ -268,13 +296,25 @@ shutdown_raspberry_pi() {
 # Execute full shutdown sequence
 shutdown_sequence() {
     local reason="$1"
+    local last_request_ts now_ts elapsed
 
     if is_shutdown_started; then
         log_warn "Shutdown already started; skipping duplicate request (${reason})"
         return
     fi
 
+    last_request_ts="$(get_state_ts "shutdown_last_request")"
+    if [[ -n "$last_request_ts" ]]; then
+        now_ts="$(state_timestamp)"
+        elapsed=$(( now_ts - last_request_ts ))
+        if (( elapsed < SHUTDOWN_COOLDOWN )); then
+            log_warn "Shutdown request suppressed by cooldown (${elapsed}s < ${SHUTDOWN_COOLDOWN}s)"
+            return
+        fi
+    fi
+
     log_warn "Shutdown sequence started: ${reason}"
+    state_set "shutdown_last_request" "$(state_timestamp)"
     mark_shutdown_started
     state_set "shutdown_reason" "$reason"
 
@@ -334,6 +374,8 @@ handle_on_battery() {
 
 handle_power_restored() {
     local restored stable stable_time current_time charge entry
+    local attempts auto_wake_exhausted
+    local wol_attempted wol_success autostart_total autostart_active
 
     if is_shutdown_started; then
         return
@@ -373,7 +415,23 @@ handle_power_restored() {
         return
     fi
 
+    init_auto_wake_session "$restored"
+    attempts="$(get_state_int "auto_wake_attempts")"
+    auto_wake_exhausted="$(state_get "auto_wake_exhausted" || true)"
+    if (( attempts >= AUTO_WAKE_MAX_ATTEMPTS )); then
+        if [[ -z "$auto_wake_exhausted" ]]; then
+            log_warn "Auto-wake attempts exhausted (${attempts}/${AUTO_WAKE_MAX_ATTEMPTS}); stopping further attempts"
+            state_set "auto_wake_exhausted" "1"
+        fi
+        return
+    fi
+
     log_info "Auto-wake conditions met: time=${current_time}, charge=${charge}%, stable=${stable}s"
+
+    wol_attempted=0
+    wol_success=0
+    autostart_total=0
+    autostart_active=0
 
     for entry in "${DEVICES[@]}"; do
         device_parse "$entry"
@@ -381,16 +439,41 @@ handle_power_restored() {
             continue
         fi
 
+        ((autostart_total++))
+
         if device_is_active "$DEVICE_HOST" "$DEVICE_PORTS"; then
+            ((autostart_active++))
             log_info "Device ${DEVICE_NAME} already up; skipping WOL"
             continue
         fi
 
-        device_wake "$DEVICE_NAME" "$DEVICE_MAC"
+        wol_attempted=1
+        if device_wake "$DEVICE_NAME" "$DEVICE_MAC"; then
+            wol_success=1
+        fi
     done
 
-    # Clear restoration markers only after auto-wake attempt
-    state_unset "power_restored_at"
+    if (( autostart_total == 0 )); then
+        log_info "No auto-start devices configured; clearing restoration marker"
+        state_unset "power_restored_at"
+        return
+    fi
+
+    if (( wol_attempted == 0 )); then
+        log_info "All auto-start devices already active; clearing restoration marker"
+        state_unset "power_restored_at"
+        return
+    fi
+
+    if (( wol_attempted == 1 )); then
+        attempts=$(( attempts + 1 ))
+        state_set "auto_wake_attempts" "$attempts"
+    fi
+
+    if (( wol_success == 1 )); then
+        log_info "Auto-wake succeeded; clearing restoration marker"
+        state_unset "power_restored_at"
+    fi
 }
 
 # --- Main loop -----------------------------------------------
