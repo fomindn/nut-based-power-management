@@ -1,0 +1,24 @@
+[Unit]
+Description=UPS Power Supervisor (NUT-based)
+After=network-online.target nut-server.service
+Wants=network-online.target
+Requires=nut-server.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/powerctl/bin/power-supervisor.sh
+Restart=always
+RestartSec=10
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
