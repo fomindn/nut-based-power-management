@@ -23,10 +23,14 @@ LOG_FORMAT="${LOG_FORMAT:-kv}"
 _log() {
     local level="$1"
     shift
+    local message="$*"
+
     if [[ "$LOG_FORMAT" == "kv" ]]; then
-        "$LOGGER_BIN" -t "$LOGGER_TAG" -p "user.${level}" -- "src=${LOGGER_TAG} level=${level} msg=\"$*\""
+        # Structured log: easy to filter by src/level/event in journald
+        "$LOGGER_BIN" -t "$LOGGER_TAG" -p "user.${level}" -- "src=${LOGGER_TAG} level=${level} msg=\"${message}\""
     else
-        "$LOGGER_BIN" -t "$LOGGER_TAG" -p "user.${level}" -- "$*"
+        # Plain log: human-readable text
+        "$LOGGER_BIN" -t "$LOGGER_TAG" -p "user.${level}" -- "${message}"
     fi
 }
 
