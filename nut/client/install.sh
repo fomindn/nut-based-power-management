@@ -12,8 +12,8 @@ ACTION="${1:---install}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 NUT_CONF_DIR="${NUT_CONF_DIR:-/etc/nut}"
-NUT_SCRIPTS_DIR="/usr/local/nut/bin"
-NUT_RUN_DIR="/run/nut"
+NUT_SCRIPTS_DIR="/etc/nut/bash-scr"
+NUT_RUN_DIR="/etc/nut/upssched"
 
 DRY_RUN=false
 

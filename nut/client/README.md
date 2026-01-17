@@ -19,9 +19,9 @@ unreachable. These configs remain fully functional without the supervisor.
    - `upsmon.conf`
    - `upssched.conf`
 2. Install the fallback script:
-   - `install -m 0755 scripts/ups_event.sh /usr/local/nut/bin/ups_event.sh`
+   - `install -m 0755 scripts/ups_event.sh /etc/nut/bash-scr/ups_event.sh`
 3. Create runtime directory:
-   - `mkdir -p /run/nut`
+   - `mkdir -p /etc/nut/upssched`
 4. Restart NUT monitor:
    - `systemctl restart nut-monitor`
 

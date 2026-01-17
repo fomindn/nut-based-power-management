@@ -11,7 +11,7 @@ functional even without the supervisor installed.
 - `conf/upsd.conf` — network listener configuration
 - `conf/upsd.users` — NUT users (monitor/admin)
 - `conf/upsmon.conf` — server-side upsmon config
-- `conf/upssched.conf` — event mapping to `/usr/local/nut/bin/ups_event.sh`
+- `conf/upssched.conf` — event mapping to `/etc/nut/bash-scr/ups_event.sh`
 - `scripts/ups_event.sh` — server event handler (optional supervisor forward)
 
 ## Installation (Manual)
@@ -26,9 +26,9 @@ functional even without the supervisor installed.
 2. Ensure correct ownership and permissions:
    - `chmod 640 /etc/nut/upsd.users`
 3. Install event handler:
-   - `install -m 0755 scripts/ups_event.sh /usr/local/nut/bin/ups_event.sh`
+   - `install -m 0755 scripts/ups_event.sh /etc/nut/bash-scr/ups_event.sh`
 4. Create runtime directory:
-   - `mkdir -p /run/nut`
+   - `mkdir -p /etc/nut/upssched`
 5. Restart NUT services:
    - `systemctl restart nut-server`
    - `systemctl restart nut-monitor`
@@ -37,7 +37,7 @@ functional even without the supervisor installed.
 
 - Set strong passwords in `upsd.users`.
 - Restrict `LISTEN` addresses in `upsd.conf` to your LAN.
-- `upssched.conf` must point to `/usr/local/nut/bin/ups_event.sh`.
+- `upssched.conf` must point to `/etc/nut/bash-scr/ups_event.sh`.
 
 ## Installation (Scripted)
 
