@@ -37,8 +37,8 @@ based on UPS events, battery charge, and day/night rules.
 ## Where to Start
 
 1. Read `docs/architecture.md` and `docs/state-machine.md`.
-2. Configure server templates in `nut/server/conf/`.
-3. Configure client templates in `nut/client/conf/`.
+2. Configure server configs in `nut/server/conf/` (standalone NUT configs).
+3. Configure client configs in `nut/client/conf/` (standalone NUT configs).
 4. Configure supervisor in `ups_events_supervisor/conf/`.
 5. Install the supervisor service on Raspberry Pi.
 

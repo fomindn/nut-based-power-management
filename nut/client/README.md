@@ -3,7 +3,7 @@
 Clients run `upsmon` to monitor the UPS status from the server. They do not
 make policy decisions; the supervisor on Raspberry Pi does that. Clients only
 run a minimal fallback shutdown handler to protect data if the server becomes
-unreachable.
+unreachable. These configs remain fully functional without the supervisor.
 
 ## Files
 
@@ -19,15 +19,15 @@ unreachable.
    - `upsmon.conf`
    - `upssched.conf`
 2. Install the fallback script:
-   - `install -m 0755 scripts/ups_event.sh /usr/local/powerctl/nut-client/ups_event.sh`
+   - `install -m 0755 scripts/ups_event.sh /usr/local/nut/bin/ups_event.sh`
 3. Create runtime directory:
-   - `mkdir -p /run/powerctl`
+   - `mkdir -p /run/nut`
 4. Restart NUT monitor:
    - `systemctl restart nut-monitor`
 
 ## Installation (Scripted)
 
-Use `install.sh` to generate configs from `/usr/local/powerctl/common/env`:
+Use `install.sh` to copy configs as-is:
 
 - `sudo ./install.sh --install`
 
@@ -36,7 +36,7 @@ Use `install.sh` to generate configs from `/usr/local/powerctl/common/env`:
 - **ONBATT**: start a local shutdown timer (default 300s)
 - **ONLINE**: cancel the local shutdown timer
 - **LOWBATT**: immediate shutdown
-- **COMMBAD/COMMFAULT**: start a communication-loss timer (default 120s)
+- **COMMBAD/COMMFAULT**: start a communication-loss timer (default 1800s)
 - **COMMOK**: cancel communication-loss timer
 
 These are last-resort safety measures and do not replace the supervisor logic.

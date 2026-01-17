@@ -50,12 +50,7 @@ name|host|mac|role|auto_start|ports|auto_wake_max|auto_wake_cooldown
 
 ### `conf/schedule.conf`
 
-Defines day/night windows for auto-wake:
-
-```
-DAY_START="09:00"
-DAY_END="23:59"
-```
+Deprecated. All values are now stored in `/usr/local/powerctl/common/env`.
 
 ## State Files
 
@@ -79,6 +74,7 @@ journalctl -u power-supervisor.service -f
 ## Troubleshooting
 
 - If no actions occur, check:
-  - `upssched` calls to `ups-event-writer.sh`
+  - NUT server handler at `/usr/local/nut/bin/ups_event.sh`
+  - Forwarding to `/usr/local/powerctl/bin/ups-event-writer.sh` if installed
   - Supervisor state files in `/run/powerctl/state`
   - `power-supervisor.service` status

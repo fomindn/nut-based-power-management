@@ -17,12 +17,13 @@ Raspberry Pi (NUT server). Clients run NUT only, plus a minimal fallback script.
 1. **NUT Server (Raspberry Pi)**
    - `upsd` exposes UPS state to the network
    - `upsmon` monitors UPS and emits events
-   - `upssched` executes `ups-event-writer.sh`
+   - `upssched` executes a local handler script
 
 2. **Supervisor (Raspberry Pi)**
    - `power-supervisor.sh` reads state and applies FSM rules
    - Acts on devices via SSH and Wake-on-LAN
    - Tracks shutdown sessions and auto-wake attempts
+   - Optional: receives events forwarded by NUT server handler
 
 3. **NUT Clients (NAS, Proxmox, PC)**
    - `upsmon` monitors remote UPS
@@ -31,7 +32,10 @@ Raspberry Pi (NUT server). Clients run NUT only, plus a minimal fallback script.
 ## Event Flow (Server)
 
 ```
-UPS -> usbhid-ups -> upsd -> upsmon -> upssched -> ups-event-writer.sh -> state/*
+UPS -> usbhid-ups -> upsd -> upsmon -> upssched -> nut server handler
+                                                    |
+                                                    v
+                                  (optional) ups-event-writer.sh -> state/*
                                                     |
                                                     v
                                            power-supervisor.sh
