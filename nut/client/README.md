@@ -29,7 +29,7 @@ unreachable. These configs remain fully functional without the supervisor.
 
 Use `install.sh` to copy configs as-is:
 
-- `sudo ./install.sh --install`
+- `sudo ./install.sh --install --nut-server-ip <NUT_SERVER_IP>`
 
 ## Fallback Behavior
 

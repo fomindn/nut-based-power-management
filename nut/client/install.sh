@@ -14,6 +14,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NUT_CONF_DIR="${NUT_CONF_DIR:-/etc/nut}"
 NUT_SCRIPTS_DIR="/etc/nut/bash-scr"
 NUT_RUN_DIR="/etc/nut/upssched"
+NUT_SERVER_IP=""
 
 DRY_RUN=false
 
@@ -42,6 +43,38 @@ run() {
     fi
 }
 
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --install)
+                ACTION="--install"
+                shift
+                ;;
+            --nut-server-ip)
+                NUT_SERVER_IP="${2:-}"
+                shift 2
+                ;;
+            --delete)
+                ACTION="--delete"
+                shift
+                ;;
+            --status)
+                ACTION="--status"
+                shift
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                ACTION="--install"
+                shift
+                ;;
+            *)
+                echo "Usage: $0 [--install|--delete|--status|--dry-run] [--nut-server-ip <ip>]"
+                exit 1
+                ;;
+        esac
+    done
+}
+
 install_all() {
     require_root
     info "Installing NUT client configuration"
@@ -51,6 +84,15 @@ install_all() {
     run cp -f "$PROJECT_ROOT/conf/nut.conf" "$NUT_CONF_DIR/nut.conf"
     run cp -f "$PROJECT_ROOT/conf/upsmon.conf" "$NUT_CONF_DIR/upsmon.conf"
     run cp -f "$PROJECT_ROOT/conf/upssched.conf" "$NUT_CONF_DIR/upssched.conf"
+
+    if [[ -z "$NUT_SERVER_IP" ]]; then
+        if grep -q "<NUT_SERVER_IP>" "$NUT_CONF_DIR/upsmon.conf"; then
+            error "Missing --nut-server-ip (placeholder <NUT_SERVER_IP> is still present)"
+            exit 1
+        fi
+    else
+        run sed -i "s/<NUT_SERVER_IP>/${NUT_SERVER_IP}/g" "$NUT_CONF_DIR/upsmon.conf"
+    fi
 
     run install -m 0755 "$PROJECT_ROOT/scripts/ups_event.sh" "$NUT_SCRIPTS_DIR/ups_event.sh"
 
@@ -72,6 +114,8 @@ status() {
     echo "NUT_CONF_DIR: ${NUT_CONF_DIR}"
     systemctl status nut-monitor --no-pager || true
 }
+
+parse_args "$@"
 
 case "$ACTION" in
     --install)

@@ -78,3 +78,11 @@ journalctl -u power-supervisor.service -f
   - Forwarding to `/usr/local/powerctl/bin/ups-event-writer.sh` if installed
   - Supervisor state files in `/run/powerctl/state`
   - `power-supervisor.service` status
+
+## SSH User (Recommended)
+
+Use a dedicated SSH user with restricted sudo commands. A helper script exists:
+
+```
+sudo tools/setup_ssh_user.sh --user powerctl --pubkey-file /path/to/key.pub
+```

@@ -47,6 +47,14 @@ based on UPS events, battery charge, and day/night rules.
 All tunable parameters (paths, timeouts, thresholds) are centralized in
 `/usr/local/powerctl/common/env`. Use `common/env.example` as a template.
 
+## SSH Setup (Recommended)
+
+Use a dedicated SSH user for remote shutdowns. A helper script is provided:
+
+```
+sudo tools/setup_ssh_user.sh --user powerctl --pubkey-file /path/to/key.pub
+```
+
 ## Security Notes
 
 - Use unique, strong passwords in `upsd.users`.
