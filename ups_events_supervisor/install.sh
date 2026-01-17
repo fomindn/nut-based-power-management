@@ -37,6 +37,8 @@ COMMON_ROOT="$INSTALL_ROOT/common"
 STATE_ROOT="/run/powerctl"          # tmpfs runtime state
 SYSTEMD_UNIT_NAME="power-supervisor.service"
 SYSTEMD_UNIT_PATH="/etc/systemd/system/${SYSTEMD_UNIT_NAME}"
+TMPFILES_CONF_NAME="powerctl-tmpfiles.conf"
+TMPFILES_CONF_PATH="/etc/tmpfiles.d/${TMPFILES_CONF_NAME}"
 
 MANIFEST_PATH="${INSTALL_ROOT}/MANIFEST"
 
@@ -110,11 +112,14 @@ install_systemd_unit() {
     info "Installing systemd unit"
 
     run cp "$PROJECT_ROOT/systemd/${SYSTEMD_UNIT_NAME}" "$SYSTEMD_UNIT_PATH"
+    run cp "$PROJECT_ROOT/systemd/${TMPFILES_CONF_NAME}" "$TMPFILES_CONF_PATH"
     record_manifest "$SYSTEMD_UNIT_PATH"
+    record_manifest "$TMPFILES_CONF_PATH"
 
     run systemctl daemon-reexec
     run systemctl daemon-reload
     run systemctl enable "$SYSTEMD_UNIT_NAME"
+    run systemd-tmpfiles --create "$TMPFILES_CONF_PATH" || true
 }
 
 install_all() {

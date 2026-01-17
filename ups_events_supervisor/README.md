@@ -86,3 +86,10 @@ Use a dedicated SSH user with restricted sudo commands. A helper script exists:
 ```
 sudo tools/setup_ssh_user.sh --user powerctl --pubkey-file /path/to/key.pub
 ```
+
+Sudoers template:
+
+```
+sudo cp tools/powerctl-sudoers.example /etc/sudoers.d/powerctl-powerctl
+sudo chmod 440 /etc/sudoers.d/powerctl-powerctl
+```

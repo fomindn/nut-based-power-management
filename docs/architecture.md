@@ -35,7 +35,7 @@ Raspberry Pi (NUT server). Clients run NUT only, plus a minimal fallback script.
 UPS -> usbhid-ups -> upsd -> upsmon -> upssched -> /etc/nut/bash-scr/ups_event.sh
                                                     |
                                                     v
-                                  (optional) ups-event-writer.sh -> state/*
+                                  (optional) /usr/local/powerctl/bin/ups-event-writer.sh -> /run/powerctl/state/*
                                                     |
                                                     v
                                            power-supervisor.sh
@@ -56,6 +56,11 @@ State is stored in `/run/powerctl/state`:
 - per-device auto-wake attempts and exhaustion flags
 
 This state is transient (tmpfs), but survives service restarts.
+
+## Runtime Directories
+
+`/run/powerctl` is created by the systemd unit and tmpfiles.d to ensure
+runtime directories exist after reboot.
 
 ## Device Control
 

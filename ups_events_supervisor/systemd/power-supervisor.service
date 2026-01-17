@@ -10,6 +10,8 @@ ExecStart=/usr/local/powerctl/bin/power-supervisor.sh
 EnvironmentFile=/usr/local/powerctl/common/env
 Restart=always
 RestartSec=10
+RuntimeDirectory=powerctl
+RuntimeDirectoryMode=0755
 
 # Hardening
 NoNewPrivileges=yes

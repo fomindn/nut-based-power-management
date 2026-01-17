@@ -62,3 +62,4 @@ sleep CHECK_INTERVAL
 - COMMBAD/COMMFAULT updates `comm_status=bad`
 - Supervisor logs warnings and throttled wall alerts
 - Auto-wake is blocked until COMMOK clears the condition
+- Events are received via `/etc/nut/bash-scr/ups_event.sh` (forwarded if supervisor is installed)

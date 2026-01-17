@@ -55,6 +55,40 @@ Use a dedicated SSH user for remote shutdowns. A helper script is provided:
 sudo tools/setup_ssh_user.sh --user powerctl --pubkey-file /path/to/key.pub
 ```
 
+Sudoers template:
+
+```
+sudo cp tools/powerctl-sudoers.example /etc/sudoers.d/powerctl-powerctl
+sudo chmod 440 /etc/sudoers.d/powerctl-powerctl
+```
+
+## Quick Setup
+
+### NUT Server (Raspberry Pi)
+
+1. Copy and edit configs in `nut/server/conf/`.
+2. Install:
+   - `sudo nut/server/install.sh --install`
+3. Check services:
+   - `systemctl status nut-server`
+   - `systemctl status nut-monitor`
+
+### NUT Client (NAS / Proxmox / PC)
+
+1. Edit `nut/client/conf/upsmon.conf` and set `<NUT_SERVER_IP>`.
+2. Install:
+   - `sudo nut/client/install.sh --install --nut-server-ip <NUT_SERVER_IP>`
+3. Check service:
+   - `systemctl status nut-monitor`
+
+### Supervisor
+
+1. Create `/usr/local/powerctl/common/env` from `common/env.example`.
+2. Install:
+   - `sudo ups_events_supervisor/install.sh --install`
+3. Start service:
+   - `systemctl status power-supervisor.service`
+
 ## Security Notes
 
 - Use unique, strong passwords in `upsd.users`.

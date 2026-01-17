@@ -1,0 +1,5 @@
+# Restricted sudoers rules for the powerctl user
+# Install as: /etc/sudoers.d/powerctl-powerctl
+# Permissions: 0440
+
+powerctl ALL=(root) NOPASSWD: /sbin/shutdown, /sbin/poweroff, /usr/bin/systemctl shutdown, /usr/bin/systemctl poweroff
