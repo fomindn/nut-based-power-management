@@ -45,7 +45,7 @@ log() {
         *) level="info" ;;
     esac
 
-    logger -p "daemon.${level}" -i -t "$SCRIPT_NAME" -- "${current_time} ${message}"
+    logger -p "daemon.${level}" -i -t "$LOG_TAG" -- "${current_time} ${message}"
 }
 
 event="${1:-}"
@@ -60,41 +60,41 @@ case "$event" in
     TIMEREXPIRED)
         case "$timer" in
             onbatt_shutdown)
-                log "WARN" "Timer expired: onbatt_shutdown (${ONBATT_GRACE}s); shutting down"
+                log "WARN" "event=timer_expired timer=onbatt_shutdown grace=${ONBATT_GRACE} action=shutdown"
                 $SHUTDOWN_CMD || true
                 ;;
             commfault_shutdown)
-                log "ERROR" "Timer expired: commfault_shutdown (${COMMFAULT_GRACE}s); shutting down"
+                log "ERROR" "event=timer_expired timer=commfault_shutdown grace=${COMMFAULT_GRACE} action=shutdown"
                 $SHUTDOWN_CMD || true
                 ;;
             *)
-                log "WARN" "Unknown timer expired: ${timer}"
+                log "WARN" "event=timer_expired timer=${timer}"
                 ;;
         esac
         ;;
     onbatt)
-        log "WARN" "UPS event: ON BATTERY (local fallback timer started)"
+        log "WARN" "event=onbatt action=start_timer"
         ;;
     online)
-        log "INFO" "UPS event: ONLINE (local fallback timer cancelled)"
+        log "INFO" "event=online action=cancel_timer"
         ;;
     lowbatt)
-        log "ERROR" "UPS event: LOW BATTERY; immediate shutdown"
+        log "ERROR" "event=lowbatt action=shutdown"
         $SHUTDOWN_CMD || true
         ;;
     commbad)
-        log "WARN" "UPS event: COMMBAD (starting commfault timer)"
+        log "WARN" "event=commbad action=start_timer"
         ;;
     commfault)
-        log "ERROR" "UPS event: COMMFAULT (starting commfault timer)"
+        log "ERROR" "event=commfault action=start_timer"
         ;;
     commok)
-        log "INFO" "UPS event: COMMOK (commfault timer cancelled)"
+        log "INFO" "event=commok action=cancel_timer"
         ;;
     shutdown)
-        log "WARN" "UPS event: SHUTDOWN (system shutdown initiated)"
+        log "WARN" "event=shutdown"
         ;;
     *)
-        log "WARN" "UPS event: UNKNOWN (${event})"
+        log "WARN" "event=unknown name=${event}"
         ;;
 esac

@@ -32,7 +32,7 @@ log() {
         *) level="info" ;;
     esac
 
-    logger -p "daemon.${level}" -i -t "$SCRIPT_NAME" -- "${current_time} ${message}"
+    logger -p "daemon.${level}" -i -t "$LOG_TAG" -- "${current_time} ${message}"
 }
 
 event="${1:-}"
@@ -45,28 +45,28 @@ fi
 
 case "$event" in
     TIMEREXPIRED)
-        log "WARN" "UPS event: TIMEREXPIRED (${timer:-unknown})"
+        log "WARN" "event=timer_expired timer=${timer:-unknown}"
         ;;
     onbatt)
-        log "WARN" "UPS event: ON BATTERY"
+        log "WARN" "event=onbatt"
         ;;
     online)
-        log "INFO" "UPS event: ONLINE"
+        log "INFO" "event=online"
         ;;
     lowbatt)
-        log "ERROR" "UPS event: LOW BATTERY"
+        log "ERROR" "event=lowbatt"
         ;;
     commbad|commfault)
-        log "ERROR" "UPS event: COMMUNICATION LOST (${event})"
+        log "ERROR" "event=${event} comm=lost"
         ;;
     commok)
-        log "INFO" "UPS event: COMMUNICATION OK"
+        log "INFO" "event=commok"
         ;;
     shutdown)
-        log "WARN" "UPS event: SHUTDOWN"
+        log "WARN" "event=shutdown"
         ;;
     *)
-        log "WARN" "UPS event: UNKNOWN (${event})"
+        log "WARN" "event=unknown name=${event}"
         ;;
 esac
 

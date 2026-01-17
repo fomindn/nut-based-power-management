@@ -19,34 +19,34 @@ EVENT="${1:-}"
 # onbatt, online, lowbatt, commbad, commfault, commok (lowercase from upssched)
 case "$EVENT" in
     onbatt)
-        log_warn "UPS event: ON BATTERY"
+        log_warn "event=onbatt action=state_set"
         state_set "power_status" "on_battery"
         state_set "on_battery_since" "$(state_timestamp)"
         ;;
     online)
-        log_info "UPS event: POWER RESTORED"
+        log_info "event=online action=state_set"
         state_set "power_status" "online"
         state_set "power_restored_at" "$(state_timestamp)"
         ;;
     lowbatt)
-        log_error "UPS event: LOW BATTERY"
+        log_crit "event=lowbatt action=state_set"
         state_set "battery_status" "low"
         ;;
     commbad|commfault)
-        log_error "UPS event: COMMUNICATION LOST (${EVENT})"
+        log_error "event=${EVENT} action=comm_bad"
         state_set "comm_status" "bad"
         if [[ -z "$(state_get "comm_bad_since" || true)" ]]; then
             state_set "comm_bad_since" "$(state_timestamp)"
         fi
         ;;
     commok)
-        log_info "UPS event: COMMUNICATION OK"
+        log_info "event=commok action=comm_ok"
         state_set "comm_status" "ok"
         state_unset "comm_bad_since"
         state_unset "comm_last_log"
         state_unset "comm_last_wall"
         ;;
     *)
-        log_warn "UPS event: UNKNOWN (${EVENT})"
+        log_warn "event=unknown name=${EVENT}"
         ;;
 esac

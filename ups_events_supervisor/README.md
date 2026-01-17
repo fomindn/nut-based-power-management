@@ -71,6 +71,12 @@ Example:
 journalctl -u power-supervisor.service -f
 ```
 
+You can combine logs from supervisor and NUT handlers:
+
+```
+journalctl -t power-supervisor -t nut-server-event -t nut-client-event -o cat
+```
+
 ## Troubleshooting
 
 - If no actions occur, check:

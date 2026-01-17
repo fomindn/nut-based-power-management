@@ -91,6 +91,23 @@ sudo chmod 440 /etc/sudoers.d/powerctl-powerctl
 3. Start service:
    - `systemctl status power-supervisor.service`
 
+## Logging and Filtering
+
+All components log to journald with distinct tags:
+
+- `power-supervisor` (supervisor)
+- `nut-server-event` (NUT server handler)
+- `nut-client-event` (NUT client handler)
+
+Examples:
+
+```
+journalctl -t power-supervisor -t nut-server-event -t nut-client-event -o cat
+journalctl -t power-supervisor -p warning -o cat
+```
+
+Structured logs can be enabled by setting `LOG_FORMAT="kv"` in the env file.
+
 ## Security Notes
 
 - Use unique, strong passwords in `upsd.users`.

@@ -48,7 +48,7 @@ flock -n 9 || {
     exit 0
 }
 
-log_info "Power Supervisor started"
+log_info "event=startup action=init"
 
 # --- Helpers --------------------------------------------------
 
@@ -115,7 +115,7 @@ maybe_clear_stale_power_restored() {
 
     age=$(( $(state_timestamp) - restored ))
     if (( age >= POWER_RESTORED_TTL )); then
-        log_warn "power_restored_at is stale (${age}s); clearing"
+        log_warn "event=power_restored_ttl age=${age} action=clear_power_restored_at"
         state_unset "power_restored_at"
         state_unset "auto_wake_for_restored_at"
     fi
@@ -140,7 +140,7 @@ log_status_summary() {
     charge="$(get_battery_charge)"
     active_count="$(count_active_devices)"
 
-    log_info "Status: power=${power_status}, battery=${charge:-unknown}%, active=${active_count}"
+    log_info "event=status power=${power_status} battery=${charge:-unknown}% active=${active_count}"
     state_set "status_last_log" "$now_ts"
 }
 
@@ -159,7 +159,7 @@ handle_comm_alerts() {
         last_log_ts="$(get_state_ts "comm_last_log")"
         elapsed=$(( now_ts - ${last_log_ts:-0} ))
         if (( elapsed >= COMM_LOG_INTERVAL )); then
-            log_warn "UPS communication lost (COMMBAD/COMMFAULT)"
+            log_warn "event=comm_loss status=bad action=log"
             state_set "comm_last_log" "$now_ts"
         fi
     fi
@@ -229,13 +229,13 @@ resolve_power_state() {
 
     if [[ -n "$onbatt_ts" && -n "$online_ts" ]]; then
         if (( onbatt_ts > online_ts )); then
-            log_warn "State conflict detected; keeping on_battery and clearing power_restored_at"
+            log_warn "event=state_conflict keep=on_battery action=clear_power_restored_at"
             state_unset "power_restored_at"
             echo "on_battery"
             return
         fi
 
-        log_warn "State conflict detected; keeping online and clearing on_battery_since"
+        log_warn "event=state_conflict keep=online action=clear_on_battery_since"
         state_unset "on_battery_since"
         echo "online"
         return
@@ -336,11 +336,11 @@ send_graceful_shutdown() {
         IFS='|' read -r name host ports <<< "$device_info"
         IFS="$old_ifs"
 
-        log_info "Sending graceful shutdown to ${name} (${host})"
+        log_info "event=graceful_shutdown device=${name} host=${host}"
         if device_shutdown_graceful "$name" "$host"; then
             PENDING_DEVICES+=("${name}|${host}|${ports}")
         else
-            log_warn "Graceful shutdown failed for ${name}; forcing immediately"
+            log_warn "event=graceful_failed device=${name} host=${host} action=force_immediate"
             device_shutdown_forced "$name" "$host"
         fi
     done
@@ -371,7 +371,7 @@ wait_and_force_shutdown() {
             if device_is_active "$host" "$ports"; then
                 new_pending+=("${name}|${host}|${ports}")
             else
-                log_info "Device ${name} is now down"
+                log_info "event=device_down device=${name} host=${host}"
             fi
         done
 
@@ -394,7 +394,7 @@ wait_and_force_shutdown() {
         IFS='|' read -r name host ports <<< "$device_info"
         IFS="$old_ifs"
 
-        log_warn "Forcing shutdown for ${name} after timeout"
+        log_warn "event=force_shutdown device=${name} host=${host} reason=timeout"
         device_shutdown_forced "$name" "$host"
     done
 }
@@ -413,11 +413,11 @@ is_shutdown_started() {
 
 # Shutdown Raspberry Pi via NUT
 shutdown_raspberry_pi() {
-    log_warn "Shutting down Raspberry Pi via NUT (upsmon -c fsd)"
+    log_warn "event=shutdown_pi action=upsmon_fsd"
     if /usr/sbin/upsmon -c fsd 2>/dev/null; then
-        log_info "Raspberry Pi shutdown initiated"
+        log_info "event=shutdown_pi status=initiated"
     else
-        log_error "Failed to initiate shutdown via NUT; trying system shutdown"
+        log_crit "event=shutdown_pi status=failed_fsd action=system_shutdown"
         shutdown -h now || true
     fi
 }
@@ -428,7 +428,7 @@ shutdown_sequence() {
     local last_request_ts now_ts elapsed
 
     if is_shutdown_started; then
-        log_warn "Shutdown already started; skipping duplicate request (${reason})"
+        log_warn "event=shutdown_skip reason=already_started trigger=${reason}"
         return
     fi
 
@@ -437,24 +437,24 @@ shutdown_sequence() {
         now_ts="$(state_timestamp)"
         elapsed=$(( now_ts - last_request_ts ))
         if (( elapsed < SHUTDOWN_COOLDOWN )); then
-            log_warn "Shutdown request suppressed by cooldown (${elapsed}s < ${SHUTDOWN_COOLDOWN}s)"
+            log_warn "event=shutdown_skip reason=cooldown elapsed=${elapsed} cooldown=${SHUTDOWN_COOLDOWN} trigger=${reason}"
             return
         fi
     fi
 
-    log_warn "Shutdown sequence started: ${reason}"
+    log_warn "event=shutdown_start reason=${reason}"
     state_set "shutdown_last_request" "$(state_timestamp)"
     mark_shutdown_started
     state_set "shutdown_reason" "$reason"
 
     collect_active_critical_devices
-    log_info "Active critical devices: ${#ACTIVE_DEVICES[@]}"
+    log_info "event=shutdown_devices count=${#ACTIVE_DEVICES[@]}"
 
     if (( ${#ACTIVE_DEVICES[@]} > 0 )); then
         send_graceful_shutdown
         wait_and_force_shutdown "$FORCE_SHUTDOWN_TIMEOUT"
     else
-        log_info "No active critical devices detected"
+        log_info "event=shutdown_devices count=0"
     fi
 
     shutdown_raspberry_pi
@@ -464,6 +464,7 @@ shutdown_sequence() {
 
 handle_low_battery() {
     if [[ "$(state_get "battery_status" || true)" == "low" ]]; then
+        log_crit "event=low_battery action=shutdown"
         shutdown_sequence "low_battery"
     fi
 }
@@ -479,7 +480,7 @@ handle_on_battery() {
     elapsed=$(( $(state_timestamp) - since ))
 
     if (( elapsed < ONBATT_STABLE_MIN )); then
-        log_debug "On battery for ${elapsed}s (debounce: ${ONBATT_STABLE_MIN}s)"
+        log_debug "event=on_battery_debounce elapsed=${elapsed} debounce=${ONBATT_STABLE_MIN}"
         return
     fi
 
@@ -489,6 +490,7 @@ handle_on_battery() {
     if is_night_time; then
         active_count="$(count_active_devices)"
         if (( active_count == 0 )); then
+            log_warn "event=on_battery night=1 active=0 action=shutdown"
             shutdown_sequence "night_no_active_devices"
             return
         fi
@@ -497,7 +499,7 @@ handle_on_battery() {
     if (( elapsed >= BATTERY_GRACE_PERIOD )); then
         shutdown_sequence "battery_grace_exceeded"
     else
-        log_debug "On battery for ${elapsed}s (grace: ${BATTERY_GRACE_PERIOD}s)"
+        log_debug "event=on_battery elapsed=${elapsed} grace=${BATTERY_GRACE_PERIOD}"
     fi
 }
 
@@ -519,7 +521,7 @@ handle_power_restored() {
 
     stable=$(( $(state_timestamp) - restored ))
     if (( stable < ONLINE_STABLE_MIN )); then
-        log_debug "Power restored ${stable}s ago (debounce: ${ONLINE_STABLE_MIN}s)"
+        log_debug "event=online_debounce elapsed=${stable} debounce=${ONLINE_STABLE_MIN}"
         return
     fi
 
@@ -529,32 +531,32 @@ handle_power_restored() {
 
     stable_time="$(get_stable_time)"
     if (( stable < stable_time )); then
-        log_debug "Power restored ${stable}s ago; waiting ${stable_time}s"
+        log_debug "event=online_stable_wait elapsed=${stable} required=${stable_time}"
         return
     fi
 
     # Night time: never auto-wake
     current_time=$(date +%H:%M)
     if ! is_day_time; then
-        log_info "Current time (${current_time}) is outside day window (${DAY_START}-${DAY_END}); skipping auto-wake"
+        log_info "event=auto_wake_skip reason=night time=${current_time} window=${DAY_START}-${DAY_END}"
         return
     fi
 
     charge="$(get_battery_charge)"
     if [[ -z "$charge" ]] || (( charge < MIN_START_BATTERY )); then
-        log_warn "Battery charge (${charge:-unknown}%) below MIN_START_BATTERY (${MIN_START_BATTERY}%)"
+        log_warn "event=auto_wake_skip reason=low_battery charge=${charge:-unknown} min=${MIN_START_BATTERY}"
         return
     fi
 
     comm_status="$(state_get "comm_status" || true)"
     if [[ "$comm_status" == "bad" ]]; then
-        log_debug "UPS communication is down; blocking auto-wake"
+        log_warn "event=auto_wake_skip reason=comm_bad"
         return
     fi
 
     init_auto_wake_session "$restored"
 
-    log_info "Auto-wake conditions met: time=${current_time}, charge=${charge}%, stable=${stable}s"
+    log_info "event=auto_wake_ready time=${current_time} charge=${charge} stable=${stable}"
 
     wol_attempted_any=0
     wol_success=0
@@ -572,7 +574,7 @@ handle_power_restored() {
 
         if device_is_active "$DEVICE_HOST" "$DEVICE_PORTS"; then
             ((autostart_active++))
-            log_info "Device ${DEVICE_NAME} already up; skipping WOL"
+            log_info "event=auto_wake_skip reason=already_up device=${DEVICE_NAME}"
             continue
         fi
 
@@ -585,7 +587,7 @@ handle_power_restored() {
 
         if (( attempts >= limit )); then
             if [[ -z "$(state_get "$exhausted_key" || true)" ]]; then
-                log_warn "Auto-wake exhausted for ${DEVICE_NAME} (${attempts}/${limit}); skipping"
+                log_warn "event=auto_wake_exhausted device=${DEVICE_NAME} attempts=${attempts} limit=${limit}"
                 state_set "$exhausted_key" "1"
             fi
             ((autostart_exhausted++))
@@ -597,7 +599,7 @@ handle_power_restored() {
             now_ts="$(state_timestamp)"
             elapsed=$(( now_ts - last_attempt ))
             if (( elapsed < cooldown_limit )); then
-                log_info "Auto-wake cooldown for ${DEVICE_NAME} (${elapsed}s < ${cooldown_limit}s); skipping"
+                log_info "event=auto_wake_skip reason=cooldown device=${DEVICE_NAME} elapsed=${elapsed} cooldown=${cooldown_limit}"
                 continue
             fi
         fi
@@ -613,30 +615,30 @@ handle_power_restored() {
     done
 
     if (( autostart_total == 0 )); then
-        log_info "No auto-start devices configured; clearing restoration marker"
+        log_info "event=auto_wake_complete reason=no_autostart action=clear_power_restored_at"
         state_unset "power_restored_at"
         return
     fi
 
     if (( autostart_active == autostart_total )); then
-        log_info "All auto-start devices already active; clearing restoration marker"
+        log_info "event=auto_wake_complete reason=all_active action=clear_power_restored_at"
         state_unset "power_restored_at"
         return
     fi
 
     if (( (autostart_active + autostart_exhausted) == autostart_total )); then
-        log_warn "Auto-wake exhausted for remaining devices; clearing restoration marker"
+        log_warn "event=auto_wake_complete reason=exhausted action=clear_power_restored_at"
         state_unset "power_restored_at"
         return
     fi
 
     if (( wol_attempted_any == 0 )); then
-        log_info "No auto-wake attempts executed; keeping restoration marker"
+        log_info "event=auto_wake_pending reason=no_attempts"
         return
     fi
 
     if (( wol_success == 1 )); then
-        log_info "Auto-wake command succeeded; waiting for devices to become active"
+        log_info "event=auto_wake_sent status=success"
     fi
 }
 
