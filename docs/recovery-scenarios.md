@@ -38,6 +38,7 @@ behavior of the system.
 4. Clear restoration marker only when:
    - Devices are active, or
    - Attempts are exhausted
+5. Optional TTL may clear stale ONLINE markers after a long delay
 
 ## Scenario 5: Power Flapping
 

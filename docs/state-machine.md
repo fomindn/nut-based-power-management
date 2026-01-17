@@ -49,6 +49,7 @@ sleep CHECK_INTERVAL
 6. Clear `power_restored_at` only when:
    - All auto-start devices are active, or
    - All remaining devices have exhausted auto-wake attempts
+7. Enforce per-device WOL cooldown and optional TTL for stale ONLINE markers
 
 ## Low-Battery Handler
 

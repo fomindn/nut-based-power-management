@@ -33,6 +33,9 @@ when to shut down devices or wake them via WOL.
 - `ONBATT_STABLE_MIN`: Debounce time for ONBATT
 - `AUTO_WAKE_MAX_ATTEMPTS`: Default auto-wake attempts per device
 - `SHUTDOWN_COOLDOWN`: Minimum time between shutdown requests
+- `AUTO_WAKE_COOLDOWN`: Minimum time between WOL attempts per device
+- `POWER_RESTORED_TTL`: Optional TTL for clearing stale ONLINE markers
+- `STATUS_LOG_INTERVAL`: Optional periodic status log interval
 
 ### `conf/device.conf`
 

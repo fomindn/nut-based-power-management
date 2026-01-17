@@ -79,6 +79,8 @@ Auto-wake is only allowed if:
 - Battery charge is above `MIN_START_BATTERY`
 - Time is within day window
 - Auto-wake attempts have not exceeded limits
+- Per-device WOL cooldown has elapsed
+- Optional TTL has not expired for `power_restored_at`
 
 ## Client Fallback
 

@@ -32,6 +32,9 @@ ONLINE_STABLE_MIN="${ONLINE_STABLE_MIN:-30}"
 ONBATT_STABLE_MIN="${ONBATT_STABLE_MIN:-10}"
 AUTO_WAKE_MAX_ATTEMPTS="${AUTO_WAKE_MAX_ATTEMPTS:-3}"
 SHUTDOWN_COOLDOWN="${SHUTDOWN_COOLDOWN:-30}"
+AUTO_WAKE_COOLDOWN="${AUTO_WAKE_COOLDOWN:-30}"
+POWER_RESTORED_TTL="${POWER_RESTORED_TTL:-0}"
+STATUS_LOG_INTERVAL="${STATUS_LOG_INTERVAL:-0}"
 
 # --- Lock -----------------------------------------------------
 LOCK_FILE="/run/powerctl/power-supervisor.lock"
@@ -91,6 +94,50 @@ get_state_int() {
     else
         echo "0"
     fi
+}
+
+# Clear stale power_restored_at if TTL is configured
+maybe_clear_stale_power_restored() {
+    local restored age
+
+    if (( POWER_RESTORED_TTL <= 0 )); then
+        return
+    fi
+
+    restored="$(get_state_ts "power_restored_at")"
+    if [[ -z "$restored" ]]; then
+        return
+    fi
+
+    age=$(( $(state_timestamp) - restored ))
+    if (( age >= POWER_RESTORED_TTL )); then
+        log_warn "power_restored_at is stale (${age}s); clearing"
+        state_unset "power_restored_at"
+        state_unset "auto_wake_for_restored_at"
+    fi
+}
+
+# Periodic status log to help diagnostics without excessive noise
+log_status_summary() {
+    local last_ts now_ts elapsed power_status charge active_count
+
+    if (( STATUS_LOG_INTERVAL <= 0 )); then
+        return
+    fi
+
+    last_ts="$(get_state_ts "status_last_log")"
+    now_ts="$(state_timestamp)"
+    elapsed=$(( now_ts - ${last_ts:-0} ))
+    if (( elapsed < STATUS_LOG_INTERVAL )); then
+        return
+    fi
+
+    power_status="$(state_get power_status || echo unknown)"
+    charge="$(get_battery_charge)"
+    active_count="$(count_active_devices)"
+
+    log_info "Status: power=${power_status}, battery=${charge:-unknown}%, active=${active_count}"
+    state_set "status_last_log" "$now_ts"
 }
 
 # Determine per-device auto-wake limit
@@ -413,6 +460,7 @@ handle_power_restored() {
     local restored stable stable_time current_time charge entry
     local attempts attempts_key exhausted_key limit
     local wol_attempted_any wol_success autostart_total autostart_active autostart_exhausted
+    local last_attempt now_ts elapsed cooldown_key
 
     if is_shutdown_started; then
         return
@@ -478,6 +526,7 @@ handle_power_restored() {
 
         attempts_key="$(device_state_key "$DEVICE_NAME" "auto_wake_attempts")"
         exhausted_key="$(device_state_key "$DEVICE_NAME" "auto_wake_exhausted")"
+        cooldown_key="$(device_state_key "$DEVICE_NAME" "auto_wake_last_attempt")"
         limit="$(get_device_auto_wake_limit "$DEVICE_AUTO_WAKE_MAX")"
         attempts="$(get_state_int "$attempts_key")"
 
@@ -490,9 +539,20 @@ handle_power_restored() {
             continue
         fi
 
+        last_attempt="$(get_state_ts "$cooldown_key")"
+        if [[ -n "$last_attempt" ]]; then
+            now_ts="$(state_timestamp)"
+            elapsed=$(( now_ts - last_attempt ))
+            if (( elapsed < AUTO_WAKE_COOLDOWN )); then
+                log_info "Auto-wake cooldown for ${DEVICE_NAME} (${elapsed}s < ${AUTO_WAKE_COOLDOWN}s); skipping"
+                continue
+            fi
+        fi
+
         wol_attempted_any=1
         attempts=$(( attempts + 1 ))
         state_set "$attempts_key" "$attempts"
+        state_set "$cooldown_key" "$(state_timestamp)"
 
         if device_wake "$DEVICE_NAME" "$DEVICE_MAC"; then
             wol_success=1
@@ -537,6 +597,9 @@ while true; do
 
     # Highest priority: low battery
     handle_low_battery
+
+    maybe_clear_stale_power_restored
+    log_status_summary
 
     case "$power_status" in
         on_battery)
