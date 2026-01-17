@@ -1,13 +1,13 @@
-#
-# upsd.users (server)
-# User definitions for NUT access
-#
+[local-upsmon]
+ password  = ups-apc
+ actions = SET
+ instcmds = ALL
+ upsmon primary
 
-[monuser]
-  password = change_me
-  upsmon master
+[upsmon]
+ password  = secret
+ upsmon secondary
 
-[admin]
-  password = change_me
-  actions = SET
-  instcmds = ALL
+[remote-upsmon]
+ password = ups-apc
+ upsmon secondary
