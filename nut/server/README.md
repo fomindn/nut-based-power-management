@@ -34,3 +34,9 @@ hosts `upsd` and `upsmon`, and triggers `upssched` events for the supervisor.
 - Set strong passwords in `upsd.users`.
 - Restrict `LISTEN` addresses in `upsd.conf` to your LAN.
 - `upssched.conf` must point to `/usr/local/powerctl/bin/ups-event-writer.sh`.
+
+## Installation (Scripted)
+
+Use `install.sh` to generate configs from `/usr/local/powerctl/common/env`:
+
+- `sudo ./install.sh --install`

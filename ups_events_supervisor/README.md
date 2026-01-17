@@ -24,31 +24,29 @@ when to shut down devices or wake them via WOL.
 
 ## Configuration Files
 
+### `/usr/local/powerctl/common/env`
+
+Centralized configuration file used by all scripts. This is the single source
+of truth for paths, timeouts, and thresholds. Use `common/env.example` as a
+template and adjust values before installation.
+
 ### `conf/power.conf`
 
-- `BATTERY_GRACE_PERIOD`: Wait time after power loss before shutdown
-- `FORCE_SHUTDOWN_TIMEOUT`: Max wait for graceful shutdown
-- `POWER_STABLE_TIME_LOW/HIGH`: Stability before auto-wake
-- `ONLINE_STABLE_MIN`: Debounce time for ONLINE
-- `ONBATT_STABLE_MIN`: Debounce time for ONBATT
-- `AUTO_WAKE_MAX_ATTEMPTS`: Default auto-wake attempts per device
-- `SHUTDOWN_COOLDOWN`: Minimum time between shutdown requests
-- `AUTO_WAKE_COOLDOWN`: Minimum time between WOL attempts per device
-- `POWER_RESTORED_TTL`: Optional TTL for clearing stale ONLINE markers
-- `STATUS_LOG_INTERVAL`: Optional periodic status log interval
+Deprecated. All values are now stored in `/usr/local/powerctl/common/env`.
 
 ### `conf/device.conf`
 
 Each device line has:
 
 ```
-name|host|mac|role|auto_start|ports|auto_wake_max
+name|host|mac|role|auto_start|ports|auto_wake_max|auto_wake_cooldown
 ```
 
 - `role`: `critical` or `user`
 - `auto_start`: `yes` or `no`
 - `ports`: comma-separated TCP ports for activity detection
 - `auto_wake_max`: optional per-device override
+- `auto_wake_cooldown`: optional per-device WOL cooldown override
 
 ### `conf/schedule.conf`
 

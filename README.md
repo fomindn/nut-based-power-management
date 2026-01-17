@@ -42,6 +42,11 @@ based on UPS events, battery charge, and day/night rules.
 4. Configure supervisor in `ups_events_supervisor/conf/`.
 5. Install the supervisor service on Raspberry Pi.
 
+## Central Configuration
+
+All tunable parameters (paths, timeouts, thresholds) are centralized in
+`/usr/local/powerctl/common/env`. Use `common/env.example` as a template.
+
 ## Security Notes
 
 - Use unique, strong passwords in `upsd.users`.

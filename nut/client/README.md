@@ -25,6 +25,12 @@ unreachable.
 4. Restart NUT monitor:
    - `systemctl restart nut-monitor`
 
+## Installation (Scripted)
+
+Use `install.sh` to generate configs from `/usr/local/powerctl/common/env`:
+
+- `sudo ./install.sh --install`
+
 ## Fallback Behavior
 
 - **ONBATT**: start a local shutdown timer (default 300s)

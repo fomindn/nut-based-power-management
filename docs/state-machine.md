@@ -10,6 +10,7 @@ It does not process events directly; it reads state markers written by NUT.
 | `power_status=on_battery` | UPS switched to battery |
 | `power_status=online` | Utility power restored |
 | `battery_status=low` | Battery is critically low |
+| `comm_status=bad` | UPS communication lost |
 
 ## Internal Supervisor Flags
 
@@ -55,3 +56,9 @@ sleep CHECK_INTERVAL
 
 - Immediate shutdown of all critical devices
 - Forced shutdown of Raspberry Pi via `upsmon -c fsd`
+
+## Communication Loss Handling
+
+- COMMBAD/COMMFAULT updates `comm_status=bad`
+- Supervisor logs warnings and throttled wall alerts
+- Auto-wake is blocked until COMMOK clears the condition

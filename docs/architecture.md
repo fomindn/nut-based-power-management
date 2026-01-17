@@ -10,6 +10,7 @@ Raspberry Pi (NUT server). Clients run NUT only, plus a minimal fallback script.
 - **Fail-safe priority**: protect data and gracefully shut down devices before UPS cutoff.
 - **Single authority**: one supervisor process, one FSM, no split-brain logic.
 - **Debounce and anti-flap**: power transitions must be stable before actions.
+- **Centralized config**: all tunables live in `/usr/local/powerctl/common/env`.
 
 ## High-Level Components
 

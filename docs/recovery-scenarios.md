@@ -54,3 +54,9 @@ behavior of the system.
    - Client performs local shutdown
 
 This ensures safety even if the server becomes unreachable.
+
+## Scenario 7: UPS Communication Loss (Server)
+
+1. Server receives COMMBAD/COMMFAULT
+2. Supervisor logs warning and sends throttled wall alerts
+3. Auto-wake is blocked until COMMOK is received
