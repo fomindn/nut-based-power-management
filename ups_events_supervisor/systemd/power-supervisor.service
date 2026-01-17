@@ -7,6 +7,7 @@ Requires=nut-server.service
 [Service]
 Type=simple
 ExecStart=/usr/local/powerctl/bin/power-supervisor.sh
+EnvironmentFile=/usr/local/powerctl/common/env
 Restart=always
 RestartSec=10
 

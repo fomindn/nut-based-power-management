@@ -13,12 +13,19 @@ IFS=$'\n\t'
 
 LOG_TAG="nut-client-event"
 
+# Load centralized environment configuration if available
+POWERCTL_ENV_FILE="${POWERCTL_ENV_FILE:-/usr/local/powerctl/common/env}"
+if [[ -f "$POWERCTL_ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$POWERCTL_ENV_FILE"
+fi
+
 # Grace periods (seconds) - must match values in upssched.conf
-ONBATT_GRACE=300        # Shutdown after 5 minutes on battery
-COMMFAULT_GRACE=120     # Shutdown after 2 minutes without UPS comms
+ONBATT_GRACE="${NUT_CLIENT_ONBATT_GRACE:-300}"      # Shutdown after ONBATT
+COMMFAULT_GRACE="${NUT_CLIENT_COMMFAULT_GRACE:-1800}" # Shutdown after COMMFAULT
 
 # Shutdown command (local)
-SHUTDOWN_CMD="/sbin/shutdown -h now"
+SHUTDOWN_CMD="${SHUTDOWN_CMD:-/sbin/shutdown -h now}"
 
 log_info() { logger -t "$LOG_TAG" -p user.info -- "$*"; }
 log_warn() { logger -t "$LOG_TAG" -p user.warn -- "$*"; }

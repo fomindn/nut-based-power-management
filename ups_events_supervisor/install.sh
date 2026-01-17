@@ -32,6 +32,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_ROOT="/usr/local/powerctl"
 BIN_ROOT="$INSTALL_ROOT/bin"
 CONF_ROOT="$INSTALL_ROOT/conf"
+COMMON_ROOT="$INSTALL_ROOT/common"
 
 STATE_ROOT="/run/powerctl"          # tmpfs runtime state
 SYSTEMD_UNIT_NAME="power-supervisor.service"
@@ -85,9 +86,15 @@ record_manifest() {
 install_files() {
     info "Installing supervisor files"
 
-    run mkdir -p "$BIN_ROOT" "$CONF_ROOT"
+    run mkdir -p "$BIN_ROOT" "$CONF_ROOT" "$COMMON_ROOT"
     run cp -r "$PROJECT_ROOT/bin/." "$BIN_ROOT/"
     run cp -r "$PROJECT_ROOT/conf/." "$CONF_ROOT/"
+    run cp -r "$PROJECT_ROOT/../common/lib" "$COMMON_ROOT/"
+
+    # Install env template if env file does not exist
+    if [[ ! -f "$COMMON_ROOT/env" ]]; then
+        run cp "$PROJECT_ROOT/../common/env.example" "$COMMON_ROOT/env"
+    fi
 
     record_manifest "$INSTALL_ROOT"
 }
