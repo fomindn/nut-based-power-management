@@ -12,6 +12,12 @@ Raspberry Pi (NUT server). Clients run NUT only, plus a minimal fallback script.
 - **Debounce and anti-flap**: power transitions must be stable before actions.
 - **Centralized config**: all tunables live in `/usr/local/powerctl/common/env`.
 
+## Execution Timeline
+
+For a step‑by‑step timeline of events and decisions, see:
+
+- `docs/trace-timeline.md`
+
 ## High-Level Components
 
 1. **NUT Server (Raspberry Pi)**
