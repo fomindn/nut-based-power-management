@@ -35,9 +35,13 @@ SHUTDOWN_COOLDOWN="${SHUTDOWN_COOLDOWN:-30}"
 AUTO_WAKE_COOLDOWN="${AUTO_WAKE_COOLDOWN:-30}"
 POWER_RESTORED_TTL="${POWER_RESTORED_TTL:-0}"
 STATUS_LOG_INTERVAL="${STATUS_LOG_INTERVAL:-0}"
+COMM_LOG_INTERVAL="${COMM_LOG_INTERVAL:-60}"
+COMM_WALL_INTERVAL="${COMM_WALL_INTERVAL:-30}"
+POWERCTL_RUN_DIR="${POWERCTL_RUN_DIR:-/run/powerctl}"
+WALL_CMD="${WALL_CMD:-/usr/bin/wall}"
 
 # --- Lock -----------------------------------------------------
-LOCK_FILE="/run/powerctl/power-supervisor.lock"
+LOCK_FILE="${POWERCTL_RUN_DIR}/power-supervisor.lock"
 exec 9>"$LOCK_FILE" || exit 1
 flock -n 9 || {
     log_error "Another instance is already running"
@@ -140,6 +144,36 @@ log_status_summary() {
     state_set "status_last_log" "$now_ts"
 }
 
+# Log and optionally notify when UPS communication is lost
+handle_comm_alerts() {
+    local comm_status last_log_ts last_wall_ts now_ts elapsed
+
+    comm_status="$(state_get "comm_status" || true)"
+    if [[ "$comm_status" != "bad" ]]; then
+        return
+    fi
+
+    now_ts="$(state_timestamp)"
+
+    if (( COMM_LOG_INTERVAL > 0 )); then
+        last_log_ts="$(get_state_ts "comm_last_log")"
+        elapsed=$(( now_ts - ${last_log_ts:-0} ))
+        if (( elapsed >= COMM_LOG_INTERVAL )); then
+            log_warn "UPS communication lost (COMMBAD/COMMFAULT)"
+            state_set "comm_last_log" "$now_ts"
+        fi
+    fi
+
+    if (( COMM_WALL_INTERVAL > 0 )) && [[ -x "$WALL_CMD" ]]; then
+        last_wall_ts="$(get_state_ts "comm_last_wall")"
+        elapsed=$(( now_ts - ${last_wall_ts:-0} ))
+        if (( elapsed >= COMM_WALL_INTERVAL )); then
+            echo "UPS communication lost (COMMBAD/COMMFAULT)" | "$WALL_CMD" || true
+            state_set "comm_last_wall" "$now_ts"
+        fi
+    fi
+}
+
 # Determine per-device auto-wake limit
 get_device_auto_wake_limit() {
     local device_limit="$1"
@@ -148,6 +182,17 @@ get_device_auto_wake_limit() {
         echo "$device_limit"
     else
         echo "$AUTO_WAKE_MAX_ATTEMPTS"
+    fi
+}
+
+# Determine per-device auto-wake cooldown
+get_device_auto_wake_cooldown() {
+    local device_cooldown="$1"
+
+    if [[ -n "$device_cooldown" ]] && [[ "$device_cooldown" =~ ^[0-9]+$ ]] && (( device_cooldown >= 0 )); then
+        echo "$device_cooldown"
+    else
+        echo "$AUTO_WAKE_COOLDOWN"
     fi
 }
 
@@ -460,7 +505,8 @@ handle_power_restored() {
     local restored stable stable_time current_time charge entry
     local attempts attempts_key exhausted_key limit
     local wol_attempted_any wol_success autostart_total autostart_active autostart_exhausted
-    local last_attempt now_ts elapsed cooldown_key
+    local last_attempt now_ts elapsed cooldown_key cooldown_limit
+    local comm_status
 
     if is_shutdown_started; then
         return
@@ -500,6 +546,12 @@ handle_power_restored() {
         return
     fi
 
+    comm_status="$(state_get "comm_status" || true)"
+    if [[ "$comm_status" == "bad" ]]; then
+        log_debug "UPS communication is down; blocking auto-wake"
+        return
+    fi
+
     init_auto_wake_session "$restored"
 
     log_info "Auto-wake conditions met: time=${current_time}, charge=${charge}%, stable=${stable}s"
@@ -528,6 +580,7 @@ handle_power_restored() {
         exhausted_key="$(device_state_key "$DEVICE_NAME" "auto_wake_exhausted")"
         cooldown_key="$(device_state_key "$DEVICE_NAME" "auto_wake_last_attempt")"
         limit="$(get_device_auto_wake_limit "$DEVICE_AUTO_WAKE_MAX")"
+        cooldown_limit="$(get_device_auto_wake_cooldown "$DEVICE_AUTO_WAKE_COOLDOWN")"
         attempts="$(get_state_int "$attempts_key")"
 
         if (( attempts >= limit )); then
@@ -543,8 +596,8 @@ handle_power_restored() {
         if [[ -n "$last_attempt" ]]; then
             now_ts="$(state_timestamp)"
             elapsed=$(( now_ts - last_attempt ))
-            if (( elapsed < AUTO_WAKE_COOLDOWN )); then
-                log_info "Auto-wake cooldown for ${DEVICE_NAME} (${elapsed}s < ${AUTO_WAKE_COOLDOWN}s); skipping"
+            if (( elapsed < cooldown_limit )); then
+                log_info "Auto-wake cooldown for ${DEVICE_NAME} (${elapsed}s < ${cooldown_limit}s); skipping"
                 continue
             fi
         fi
@@ -599,6 +652,7 @@ while true; do
     handle_low_battery
 
     maybe_clear_stale_power_restored
+    handle_comm_alerts
     log_status_summary
 
     case "$power_status" in
