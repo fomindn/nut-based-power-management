@@ -12,25 +12,25 @@ source /usr/local/powerctl/bin/ssh-lib.sh
 source /usr/local/powerctl/bin/wol-lib.sh
 
 # Parse a device entry from device.conf
-# Format: name|host|mac|role|auto_start|ports|auto_wake_max
+# Format: name|host|mac|role|auto_start|ports|auto_wake_max|auto_wake_cooldown
 # ports: comma-separated TCP ports used to detect "active" services.
 # Use "-" or empty to treat ping as the only activity signal.
 # auto_wake_max: optional per-device limit for auto-wake attempts.
+# auto_wake_cooldown: optional per-device cooldown for WOL attempts.
 device_parse() {
     local entry="$1"
     local old_ifs="$IFS"
 
-    IFS='|' read -r DEVICE_NAME DEVICE_HOST DEVICE_MAC DEVICE_ROLE DEVICE_AUTOSTART DEVICE_PORTS DEVICE_AUTO_WAKE_MAX <<< "$entry"
+    IFS='|' read -r DEVICE_NAME DEVICE_HOST DEVICE_MAC DEVICE_ROLE DEVICE_AUTOSTART DEVICE_PORTS DEVICE_AUTO_WAKE_MAX DEVICE_AUTO_WAKE_COOLDOWN <<< "$entry"
     IFS="$old_ifs"
 }
 
 # Check if a device responds to ping
 # Returns 0 if reachable, 1 otherwise
-# Check if a device responds to ping
-# Returns 0 if reachable, 1 otherwise
 device_is_reachable() {
     local host="$1"
-    ping -c1 -W1 "$host" >/dev/null 2>&1
+    local ping_bin="${PING_BIN:-ping}"
+    "$ping_bin" -c1 -W1 "$host" >/dev/null 2>&1
 }
 
 # Check if a TCP port is open using best available method
@@ -39,13 +39,16 @@ port_is_open() {
     local host="$1"
     local port="$2"
 
-    if command -v nc >/dev/null 2>&1; then
-        nc -z -w1 "$host" "$port" >/dev/null 2>&1
+    local nc_bin="${NC_BIN:-nc}"
+
+    if command -v "$nc_bin" >/dev/null 2>&1; then
+        "$nc_bin" -z -w1 "$host" "$port" >/dev/null 2>&1
         return $?
     fi
 
     # Fallback to /dev/tcp when nc is unavailable (bash feature)
-    timeout 1 bash -c "cat < /dev/null > /dev/tcp/${host}/${port}" >/dev/null 2>&1
+    local timeout_bin="${TIMEOUT_BIN:-timeout}"
+    "$timeout_bin" 1 bash -c "cat < /dev/null > /dev/tcp/${host}/${port}" >/dev/null 2>&1
 }
 
 # Determine if a device is "active"

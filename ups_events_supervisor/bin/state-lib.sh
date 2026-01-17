@@ -12,7 +12,7 @@ IFS=$'\n\t'
 
 source /usr/local/powerctl/common/lib/log.sh
 
-STATE_DIR="/run/powerctl/state"
+STATE_DIR="${STATE_DIR:-/run/powerctl/state}"
 mkdir -p "$STATE_DIR"
 
 state_set() {

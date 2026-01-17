@@ -8,11 +8,19 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# Load centralized environment configuration if available
+POWERCTL_ENV_FILE="${POWERCTL_ENV_FILE:-/usr/local/powerctl/common/env}"
+if [[ -f "$POWERCTL_ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$POWERCTL_ENV_FILE"
+fi
+
 UPS_NAME="${UPS_NAME:-ups}"
 UPS_HOST="${UPS_HOST:-127.0.0.1}"
+UPSC_BIN="${UPSC_BIN:-upsc}"
 
 ups_query() {
-    upsc "${UPS_NAME}@${UPS_HOST}"
+    "$UPSC_BIN" "${UPS_NAME}@${UPS_HOST}"
 }
 
 ups_battery_charge() {
