@@ -108,6 +108,12 @@ journalctl -t power-supervisor -p warning -o cat
 
 Structured logs can be enabled by setting `LOG_FORMAT="kv"` in the env file.
 
+## Testing and Troubleshooting
+
+Manual checklist and troubleshooting guide:
+
+- `docs/testing-troubleshooting.md`
+
 ## Security Notes
 
 - Use unique, strong passwords in `upsd.users`.
