@@ -39,6 +39,7 @@ COMM_LOG_INTERVAL="${COMM_LOG_INTERVAL:-60}"
 COMM_WALL_INTERVAL="${COMM_WALL_INTERVAL:-30}"
 POWERCTL_RUN_DIR="${POWERCTL_RUN_DIR:-/run/powerctl}"
 WALL_CMD="${WALL_CMD:-/usr/bin/wall}"
+CHECK_INTERVAL="${CHECK_INTERVAL:-10}"
 
 # --- Lock -----------------------------------------------------
 LOCK_FILE="${POWERCTL_RUN_DIR}/power-supervisor.lock"

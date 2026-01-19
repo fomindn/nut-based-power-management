@@ -49,6 +49,7 @@ port_is_open() {
     # Fallback to /dev/tcp when nc is unavailable (bash feature)
     local timeout_bin="${TIMEOUT_BIN:-timeout}"
     "$timeout_bin" 1 bash -c "cat < /dev/null > /dev/tcp/${host}/${port}" >/dev/null 2>&1
+    return $?
 }
 
 # Determine if a device is "active"
@@ -108,4 +109,5 @@ device_wake() {
 
     log_info "Sending WOL packet to ${name}"
     wol_device "$mac"
+    return $?
 }
